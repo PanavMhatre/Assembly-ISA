@@ -206,9 +206,125 @@ UTF8_to_unicode:
 	.global	unicode_to_UTF8
 	.type	unicode_to_UTF8, %function
 unicode_to_UTF8:
-    // (STUDENT TODO) Code for unicode_to_UTF8 goes here.
     // Input parameter a is passed in X0; input parameter utf8 is passed in X2
     // There are no output values
+    // --- STEP 1: SAFE MEMORY PREP ---
+    // Load the original 8 bytes at the pointer (X1) to preserve the top 4 bytes
+    LDUR X9, [X1, #0]
+    LSR X9, X9, #32
+    LSL X9, X9, #32         // X9 now has its bottom 32 bits completely zeroed out!
+
+    // --- STEP 2: CHECK CHARACTER LENGTH ---
+    // Check if Invalid (greater than 0x10FFFF)
+    MOVZ X2, #0xFFFF
+    MOVK X2, #0x0010, LSL #16
+    CMP X0, X2
+    B.HI .L_enc_invalid
+
+    // Check if 4-byte (greater than 0xFFFF)
+    MOVZ X2, #0xFFFF
+    CMP X0, X2
+    B.HI .L_enc_four
+
+    // Check if 3-byte (greater than 0x07FF)
+    MOVZ X2, #0x07FF
+    CMP X0, X2
+    B.HI .L_enc_three
+
+    // Check if 2-byte (greater than 0x007F)
+    MOVZ X2, #0x007F
+    CMP X0, X2
+    B.HI .L_enc_two
+
+
+    // --- STEP 3: MASK, SHIFT, AND BUILD ---
+    
+.L_enc_one:
+    // 1-byte: It's just normal ASCII.
+    ORR X3, XZR, X0         
+    B .L_enc_store
+
+.L_enc_two:
+    // 2-byte
+    // Byte 0: top 5 bits -> (a >> 6) | 0xC0
+    LSR X3, X0, #6
+    MOVZ X4, #0xC0
+    ORR X3, X3, X4
+    
+    // Byte 1: bottom 6 bits -> (a & 0x3F) | 0x80
+    MOVZ X4, #0x3F
+    ANDS X5, X0, X4
+    MOVZ X6, #0x80
+    ORR X5, X5, X6
+    LSL X5, X5, #8          // Shift into Byte 1 position
+    
+    ORR X3, X3, X5          // Smash them together
+    B .L_enc_store
+
+.L_enc_three:
+    // 3-byte
+    // Byte 0: top 4 bits -> (a >> 12) | 0xE0
+    LSR X3, X0, #12
+    MOVZ X4, #0xE0
+    ORR X3, X3, X4
+
+    // Byte 1: middle 6 bits -> ((a >> 6) & 0x3F) | 0x80
+    LSR X5, X0, #6
+    MOVZ X4, #0x3F
+    ANDS X5, X5, X4
+    MOVZ X6, #0x80
+    ORR X5, X5, X6
+    LSL X5, X5, #8          // Shift into Byte 1 position
+    ORR X3, X3, X5
+
+    // Byte 2: bottom 6 bits -> (a & 0x3F) | 0x80
+    ANDS X7, X0, X4
+    ORR X7, X7, X6
+    LSL X7, X7, #16         // Shift into Byte 2 position
+    ORR X3, X3, X7
+    B .L_enc_store
+
+.L_enc_four:
+    // 4-byte
+    // Byte 0: top 3 bits -> (a >> 18) | 0xF0
+    LSR X3, X0, #18
+    MOVZ X4, #0xF0
+    ORR X3, X3, X4
+
+    // Byte 1: bits 12-17
+    LSR X5, X0, #12
+    MOVZ X4, #0x3F
+    ANDS X5, X5, X4
+    MOVZ X6, #0x80
+    ORR X5, X5, X6
+    LSL X5, X5, #8
+    ORR X3, X3, X5
+
+    // Byte 2: bits 6-11
+    LSR X7, X0, #6
+    ANDS X7, X7, X4
+    ORR X7, X7, X6
+    LSL X7, X7, #16
+    ORR X3, X3, X7
+
+    // Byte 3: bits 0-5
+    ANDS X8, X0, X4
+    ORR X8, X8, X6
+    LSL X8, X8, #24
+    ORR X3, X3, X8
+    B .L_enc_store
+
+.L_enc_invalid:
+    // If it's too big for Unicode, the manual says fill all 4 bytes with 0xFF.
+    MOVZ X3, #0xFFFF
+    MOVK X3, #0xFFFF, LSL #16
+
+
+    // --- STEP 4: STORE BACK TO MEMORY ---
+.L_enc_store:
+    ORR X9, X9, X3          // Drop our new 32-bit chunk into the safe 64-bit string
+    STUR X9, [X1, #0]       // Save it back to memory
+    RET
 
     ret
 	.size	unicode_to_UTF8, .-unicode_to_UTF8
