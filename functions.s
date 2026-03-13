@@ -336,11 +336,68 @@ unicode_to_UTF8:
     .global compare
     .type   compare, %function
 compare:
-    // (STUDENT TODO) Code for compare goes here.
     // Input parameter a is passed in X0; input parameter b is passed in X1.
     // Output value is returned in X0.
+    compare:
+    // X0 = Pointer to Ticket A
+    // X1 = Pointer to Ticket B
 
-    ret
+    // --- Field 1: unique_id (8 bytes, Offset 0) ---
+    LDUR X2, [X0, #0]
+    LDUR X3, [X1, #0]
+    CMP X2, X3
+    B.NE .L_compare_diff    // If IDs don't match, return 1
+
+    // --- Field 2: seat_code (3 bytes, Offset 8) ---
+    LDUR X2, [X0, #8]
+    LDUR X3, [X1, #8]
+    // Mask out the 5 bytes of garbage padding (Keep bottom 24 bits)
+    MOVZ X4, #0xFFFF
+    MOVK X4, #0x00FF, LSL #16
+    ANDS X2, X2, X4
+    ANDS X3, X3, X4
+    CMP X2, X3
+    B.NE .L_compare_diff
+
+    // --- Field 3: price (8 bytes, Offset 16) ---
+    LDUR X2, [X0, #16]
+    LDUR X3, [X1, #16]
+    CMP X2, X3
+    B.NE .L_compare_diff
+
+    // --- Field 4: special_admission (1 byte, Offset 24) ---
+    LDUR X2, [X0, #24]
+    LDUR X3, [X1, #24]
+    // Mask out the 7 bytes of garbage (Keep bottom 8 bits)
+    MOVZ X4, #0xFF
+    ANDS X2, X2, X4
+    ANDS X3, X3, X4
+    CMP X2, X3
+    B.NE .L_compare_diff
+
+    // --- Field 5: recommendations pointer (8 bytes, Offset 32) ---
+    LDUR X2, [X0, #32]
+    LDUR X3, [X1, #32]
+    CMP X2, X3
+    B.NE .L_compare_diff
+
+    // --- Field 6: refundable (1 byte, Offset 40) ---
+    LDUR X2, [X0, #40]
+    LDUR X3, [X1, #40]
+    // Mask out the 7 bytes of garbage (Keep bottom 8 bits)
+    MOVZ X4, #0xFF
+    ANDS X2, X2, X4
+    ANDS X3, X3, X4
+    CMP X2, X3
+    B.NE .L_compare_diff
+
+    // --- SUCCESS: All fields matched! ---
+    MOVZ X0, #0
+    RET
+    // --- FAILURE: Difference found ---
+.L_compare_diff:
+    MOVZ X0, #1
+    RET
     .size   compare, .-compare
     // ... and ends with the .size above this line.
 
@@ -348,6 +405,9 @@ compare:
 	.align	2
 	.global	tree_depth
 	.type	tree_depth, %function
+
+
+
 tree_depth:
     // (STUDENT TODO) Code for tree_depth goes here.
     // Input parameter root is passed in X0.
