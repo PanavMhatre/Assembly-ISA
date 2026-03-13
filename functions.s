@@ -61,7 +61,7 @@ lru:
     MOVZ X4, #0xFF          
     ANDS X2, X2, X4     
 
-    SUB X3, XZR, X2
+    SUBS X3, XZR, X2
     ANDS X2, X2, X3    
     
     // 3. Turn the isolated bit into a string of 1s (e.g., 00001000 becomes 00000111)
@@ -71,16 +71,16 @@ lru:
     LSR X3, X2, #1
     MOVZ X4, #0x55
     ANDS X3, X3, X4
-    SUB X2, X2, X3
+    SUBS X2, X2, X3
 
     LSR X3, X2, #2
     MOVZ X4, #0x33
     ANDS X2, X2, X4
     ANDS X3, X3, X4
-    ADD X2, X2, X3
+    ADDS X2, X2, X3
 
     LSR X3, X2, #4
-    ADD X2, X2, X3
+    ADDS X2, X2, X3
     MOVZ X4, #0x0F
 
     // 5. STORE THE FINAL COUNT DIRECTLY INTO X0!
@@ -412,7 +412,7 @@ tree_depth:
     // (STUDENT TODO) Code for tree_depth goes here.
     // Input parameter root is passed in X0.
     // Output value is returned in X0.
-
+    BL tree_depth
     ret
 	.size	tree_depth, .-tree_depth
 	// ... and ends with the .size above this line.
@@ -425,9 +425,8 @@ insert_at_head:
     // (STUDENT TODO) Code for insert_at_head goes here.
     // Input parameter head is passed in X0; input parameter data is passed in X1; input parameter tail is passed in X2
     // There is no output value. Parameter head will be mutated, and possibly tail
-
-ret
-
+    BL malloc
+    ret
 	.size	insert_at_head, .-insert_at_head
 	// ... and ends with the .size above this line.
 
@@ -440,7 +439,7 @@ del_at_head:
     // (STUDENT TODO) Code for del_at_head goes here.
     // Input parameter head is passed in X0; Input parameter tail is passed in X1
     // There is no output value. Parameter head and tail will be possibly mutated
-
+    BL free
     ret
     .size   del_at_head, .-del_at_head
     // ... and ends with the .size above this line.
@@ -454,7 +453,7 @@ sum_up:
     // (STUDENT TODO) Code for sum_up goes here.
     // Input parameter starting_node is passed in X0
     // Output value is returned in X0.
-
+    ret
     .size   sum_up, .-sum_up
     // ... and ends with the .size above this line.
     
