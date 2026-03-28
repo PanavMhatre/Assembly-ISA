@@ -595,7 +595,7 @@ sum_up:
     B.EQ .L_su_done
 
     LDUR X3, [X1, #0]       // X3 = cur->data
-    ADD  X0, X0, X3         // sum += cur->data
+    ADDS  X0, X0, X3         // sum += cur->data
 
     LDUR X4, [X1, #8]       // X4 = cur->npx
     EOR  X4, X4, X2         // next = cur->npx ^ prev
