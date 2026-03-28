@@ -405,15 +405,52 @@ compare:
 	.align	2
 	.global	tree_depth
 	.type	tree_depth, %function
-
-
-
 tree_depth:
-    // (STUDENT TODO) Code for tree_depth goes here.
     // Input parameter root is passed in X0.
     // Output value is returned in X0.
-    BL tree_depth
-    ret
+
+    // Base case: if root == NULL, return 0
+    CMP  X0, XZR
+    B.EQ .L_td_null
+
+    // Prologue: allocate 32-byte frame, save LR + callee-saved regs
+    SUB  SP,  SP, #32
+    STUR X30, [SP, #0]      // save LR
+    STUR X19, [SP, #8]      // save X19 (root)
+    STUR X20, [SP, #16]     // save X20 (left_depth)
+
+    ORR  X19, XZR, X0       // X19 = root (survives BL)
+
+    // tree_depth(root->left)  — left ptr at offset 0
+    LDUR X0, [X19, #0]
+    BL   tree_depth
+    ORR  X20, XZR, X0       // X20 = left_depth
+
+    // tree_depth(root->right) — right ptr at offset 8
+    LDUR X0, [X19, #8]
+    BL   tree_depth         // X0  = right_depth
+
+    // result = max(left_depth, right_depth) + 1
+    CMP  X20, X0
+    B.GT .L_td_left_wins
+
+    // right_depth >= left_depth
+    ADD  X0, X0, #1
+    B    .L_td_epilogue
+
+.L_td_left_wins:
+    ADD  X0, X20, #1
+
+.L_td_epilogue:
+    LDUR X30, [SP, #0]
+    LDUR X19, [SP, #8]
+    LDUR X20, [SP, #16]
+    ADD  SP,  SP, #32
+    RET
+
+.L_td_null:
+    MOVZ X0, #0
+    RET
 	.size	tree_depth, .-tree_depth
 	// ... and ends with the .size above this line.
 
@@ -422,11 +459,61 @@ tree_depth:
 	.global	insert_at_head
 	.type	insert_at_head, %function
 insert_at_head:
-    // (STUDENT TODO) Code for insert_at_head goes here.
-    // Input parameter head is passed in X0; input parameter data is passed in X1; input parameter tail is passed in X2
-    // There is no output value. Parameter head will be mutated, and possibly tail
-    BL malloc
-    ret
+    // Input parameter head is passed in X0
+    // Input parameter data is passed in X1
+    // Input parameter tail is passed in X2
+
+    // Prologue: 48-byte frame (5 regs × 8 = 40, rounded to 48 for alignment)
+    SUB  SP,  SP, #48
+    STUR X30, [SP, #0]      // save LR
+    STUR X19, [SP, #8]      // X19 = head  (linked_node_t**)
+    STUR X20, [SP, #16]     // X20 = data
+    STUR X21, [SP, #24]     // X21 = tail  (linked_node_t**)
+    STUR X22, [SP, #32]     // X22 = old_head ptr
+
+    ORR  X19, XZR, X0       // save head ptr-ptr
+    ORR  X20, XZR, X1       // save data
+    ORR  X21, XZR, X2       // save tail ptr-ptr
+
+    // malloc(16) — sizeof(linked_node_t) = 16
+    MOVZ X0, #16
+    BL   malloc             // X0 = new_node
+
+    // new_node->data = data
+    STUR X20, [X0, #0]
+
+    // old_head = *head
+    LDUR X22, [X19, #0]     // X22 = old_head
+
+    // new_node->npx = NULL ^ old_head = old_head
+    STUR X22, [X0, #8]
+
+    // if old_head != NULL: patch old_head->npx ^= new_node
+    // (old_head's prev was NULL, so npx was NULL^next = next; now prev=new_node)
+    CMP  X22, XZR
+    B.EQ .L_iah_was_empty
+
+    LDUR X3, [X22, #8]      // X3 = old_head->npx
+    EOR  X3, X3, X0         // XOR in new_node address
+    STUR X3, [X22, #8]
+    B    .L_iah_set_head
+
+.L_iah_was_empty:
+    // list was empty → new node is also the tail
+    STUR X0, [X21, #0]
+
+.L_iah_set_head:
+    // *head = new_node
+    STUR X0, [X19, #0]
+
+    // Epilogue
+    LDUR X30, [SP, #0]
+    LDUR X19, [SP, #8]
+    LDUR X20, [SP, #16]
+    LDUR X21, [SP, #24]
+    LDUR X22, [SP, #32]
+    ADD  SP,  SP, #48
+    RET
 	.size	insert_at_head, .-insert_at_head
 	// ... and ends with the .size above this line.
 
@@ -436,11 +523,56 @@ insert_at_head:
     .global del_at_head
     .type   del_at_head, %function
 del_at_head:
-    // (STUDENT TODO) Code for del_at_head goes here.
-    // Input parameter head is passed in X0; Input parameter tail is passed in X1
-    // There is no output value. Parameter head and tail will be possibly mutated
-    BL free
-    ret
+    // Input parameter head is passed in X0
+    // Input parameter tail is passed in X1
+
+    // Prologue: 32-byte frame
+    SUB  SP,  SP, #32
+    STUR X30, [SP, #0]      // save LR
+    STUR X19, [SP, #8]      // X19 = head ptr-ptr
+    STUR X20, [SP, #16]     // X20 = tail ptr-ptr
+    STUR X21, [SP, #24]     // X21 = old_head
+
+    ORR  X19, XZR, X0
+    ORR  X20, XZR, X1
+
+    // old_head = *head
+    LDUR X21, [X19, #0]
+
+    // if *head == NULL, nothing to do
+    CMP  X21, XZR
+    B.EQ .L_dah_done
+
+    // next = old_head->npx ^ NULL = old_head->npx
+    LDUR X2, [X21, #8]      // X2 = next
+
+    CMP  X2, XZR
+    B.EQ .L_dah_one_node
+
+    // Patch next->npx: XOR out old_head (removes old_head from next's prev)
+    LDUR X3, [X2, #8]
+    EOR  X3, X3, X21
+    STUR X3, [X2, #8]
+    // *head = next
+    STUR X2, [X19, #0]
+    B    .L_dah_free
+
+.L_dah_one_node:
+    // List becomes empty
+    STUR XZR, [X19, #0]
+    STUR XZR, [X20, #0]
+
+.L_dah_free:
+    ORR  X0, XZR, X21       // free(old_head)
+    BL   free
+
+.L_dah_done:
+    LDUR X30, [SP, #0]
+    LDUR X19, [SP, #8]
+    LDUR X20, [SP, #16]
+    LDUR X21, [SP, #24]
+    ADD  SP,  SP, #32
+    RET
     .size   del_at_head, .-del_at_head
     // ... and ends with the .size above this line.
 
@@ -450,10 +582,29 @@ del_at_head:
     .global sum_up
     .type   sum_up, %function
 sum_up:
-    // (STUDENT TODO) Code for sum_up goes here.
     // Input parameter starting_node is passed in X0
     // Output value is returned in X0.
-    ret
+
+    // cur  = *starting_node
+    LDUR X1, [X0, #0]       // X1 = cur
+    MOVZ X2, #0             // X2 = prev = NULL
+    MOVZ X0, #0             // X0 = sum  = 0
+
+.L_su_loop:
+    CMP  X1, XZR
+    B.EQ .L_su_done
+
+    LDUR X3, [X1, #0]       // X3 = cur->data
+    ADD  X0, X0, X3         // sum += cur->data
+
+    LDUR X4, [X1, #8]       // X4 = cur->npx
+    EOR  X4, X4, X2         // next = cur->npx ^ prev
+
+    ORR  X2, XZR, X1        // prev = cur
+    ORR  X1, XZR, X4        // cur  = next
+    B    .L_su_loop
+
+.L_su_done:
+    RET
     .size   sum_up, .-sum_up
     // ... and ends with the .size above this line.
-    
